@@ -1,5 +1,12 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.database import get_db
+
+settings = get_settings()
 
 app = FastAPI(
     title="Movie Booking API",
@@ -7,10 +14,9 @@ app = FastAPI(
     description="ระบบจองตั๋วหนัง",
 )
 
-# CORS - frontend จะอยู่คนละ origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # vite dev server
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,6 +29,9 @@ def root() -> dict[str, str]:
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    # ใช้สำหรับ smoke test ใน CI/CD และ Render health check
-    return {"status": "ok"}
+def health(db: Session = Depends(get_db)) -> dict[str, str]:
+    try:
+        db.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        return {"status": "error", "database": str(e)}

@@ -1,4 +1,4 @@
-#!/Users/appleclub/Desktop/DevOps/movie-booking/backend/.venv/bin/python3
+#!/Users/appleclub/Desktop/DevOps/movie-booking/backend/.venv/bin/python3.12
 import sys
 from markdown_it.cli.parse import main
 if __name__ == '__main__':
