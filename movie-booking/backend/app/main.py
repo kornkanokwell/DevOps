@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
+from app.routers import auth, cinemas, movies
 
 settings = get_settings()
 
@@ -22,13 +23,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Routers
+app.include_router(auth.router)
+app.include_router(movies.router)
+app.include_router(cinemas.router)
 
-@app.get("/")
+
+@app.get("/", tags=["Health"])
 def root() -> dict[str, str]:
     return {"message": "Movie Booking API"}
 
 
-@app.get("/health")
+@app.get("/health", tags=["Health"])
 def health(db: Session = Depends(get_db)) -> dict[str, str]:
     try:
         db.execute(text("SELECT 1"))
