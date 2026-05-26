@@ -33,6 +33,15 @@ type BookingResult = {
   seats: { seat_row: string; seat_col: number }[];
 };
 
+type HistoryBooking = {
+  id: number;
+  booking_code: string;
+  showtime_id: number;
+  total_price: number;
+  status: string;
+  seats: { seat_row: string; seat_col: number }[];
+};
+
 const ROWS = ["A", "B", "C", "D", "E"];
 const COLS = [1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -47,7 +56,6 @@ function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Booking modal state
   const [bookingMovie, setBookingMovie] = useState<Movie | null>(null);
   const [showtimes, setShowtimes] = useState<Showtime[]>([]);
   const [selectedShowtime, setSelectedShowtime] = useState<Showtime | null>(null);
@@ -56,10 +64,30 @@ function App() {
   const [bookingError, setBookingError] = useState("");
   const [bookingSuccess, setBookingSuccess] = useState<BookingResult | null>(null);
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [bookingsHistory, setBookingsHistory] = useState<HistoryBooking[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+
+  const [allShowtimes, setAllShowtimes] = useState<Showtime[]>([]);
+
   useEffect(() => {
     fetch(`${API}/movies`)
       .then((r) => r.json())
-      .then(setMovies)
+      .then((data) => {
+        setMovies(data);
+        data.forEach((movie: Movie) => {
+          fetch(`${API}/movies/${movie.id}/showtimes`)
+            .then((r) => r.json())
+            .then((stList) => {
+              setAllShowtimes((prev) => {
+                const filtered = stList.filter((st: Showtime) => !prev.some((p) => p.id === st.id));
+                return [...prev, ...filtered];
+              });
+            })
+            .catch(() => {});
+        });
+      })
       .catch(() => setError("ไม่สามารถโหลดหนังได้"));
   }, []);
 
@@ -107,6 +135,7 @@ function App() {
   const handleLogout = () => {
     setToken(null); setUser(null);
     localStorage.removeItem("token");
+    setBookingsHistory([]);
   };
 
   const openBooking = async (movie: Movie) => {
@@ -115,13 +144,17 @@ function App() {
     setSelectedSeats([]);
     setBookingError("");
     setBookingSuccess(null);
-    // โหลด showtimes ของหนังเรื่องนี้
     try {
       const res = await fetch(`${API}/movies/${movie.id}/showtimes`);
       if (res.ok) {
         const data = await res.json();
         setShowtimes(data);
         if (data.length > 0) setSelectedShowtime(data[0]);
+        
+        setAllShowtimes((prev) => {
+          const filtered = data.filter((st: Showtime) => !prev.some((p) => p.id === st.id));
+          return [...prev, ...filtered];
+        });
       } else {
         setShowtimes([]);
       }
@@ -134,7 +167,7 @@ function App() {
     setSelectedSeats((prev) => {
       const exists = prev.find((s) => s.row === row && s.col === col);
       if (exists) return prev.filter((s) => !(s.row === row && s.col === col));
-      if (prev.length >= 8) return prev; // จำกัดสูงสุด 8 ที่นั่ง
+      if (prev.length >= 8) return prev;
       return [...prev, { row, col }];
     });
   };
@@ -169,6 +202,37 @@ function App() {
     setBookingError("");
   };
 
+  const openHistoryModal = async () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const res = await fetch(`${API}/bookings/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("ไม่สามารถดึงข้อมูลประวัติการจองได้");
+      const data = await res.json();
+      setBookingsHistory(data);
+    } catch (e) {
+      setHistoryError(e instanceof Error ? e.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const getBookingDetails = (showtimeId: number) => {
+    const showtime = allShowtimes.find((st) => st.id === showtimeId);
+    if (!showtime) return { movieTitle: "ไม่พบข้อมูลหนัง", showtimeText: "ไม่พบข้อมูลรอบฉาย" };
+    
+    const movie = movies.find((m) => m.id === showtime.movie_id);
+    const movieTitle = movie ? movie.title : "ไม่พบข้อมูลหนัง";
+    const showtimeText = new Date(showtime.start_time).toLocaleString("th-TH", {
+      dateStyle: "short", timeStyle: "short"
+    });
+
+    return { movieTitle, showtimeText };
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       {/* Header */}
@@ -182,6 +246,12 @@ function App() {
                   <span className="ml-2 px-2 py-0.5 bg-yellow-500 text-black text-xs rounded">ADMIN</span>
                 )}
               </span>
+              {/* ปุ่มประวัติการจอง */}
+              <button 
+                onClick={openHistoryModal} 
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm transition">
+                📜 ประวัติการจอง
+              </button>
               <button onClick={handleLogout} className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm">
                 ออกจากระบบ
               </button>
@@ -264,7 +334,6 @@ function App() {
               </div>
 
               {bookingSuccess ? (
-                /* Success State */
                 <div className="text-center py-4">
                   <div className="text-5xl mb-4">✅</div>
                   <h3 className="text-xl font-bold text-green-400 mb-2">จองสำเร็จ!</h3>
@@ -282,7 +351,6 @@ function App() {
                 </div>
               ) : (
                 <>
-                  {/* Showtime Selector */}
                   {showtimes.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-gray-400 text-lg">😔 ยังไม่มีรอบฉายสำหรับหนังเรื่องนี้</p>
@@ -312,13 +380,11 @@ function App() {
                         </div>
                       </div>
 
-                      {/* Seat Map */}
                       {selectedShowtime && (
                         <div className="mb-4">
                           <label className="block text-sm text-gray-400 mb-2">
                             เลือกที่นั่ง ({selectedSeats.length} ที่นั่ง)
                           </label>
-                          {/* Screen */}
                           <div className="w-full bg-blue-900/40 border border-blue-700 rounded text-center text-xs text-blue-300 py-1 mb-3">
                             🎬 จอภาพ
                           </div>
@@ -350,7 +416,6 @@ function App() {
                         </div>
                       )}
 
-                      {/* Summary */}
                       {selectedSeats.length > 0 && selectedShowtime && (
                         <div className="bg-gray-700 rounded-lg p-3 mb-4 text-sm">
                           <div className="flex justify-between">
@@ -385,6 +450,67 @@ function App() {
                   )}
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- ประวัติการจอง Modal --- */}
+      {historyOpen && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+            <div className="p-6 border-b border-gray-700 flex items-center justify-between">
+              <h2 className="text-xl font-bold flex items-center gap-2">📜 ประวัติการจองของคุณ</h2>
+              <button onClick={() => setHistoryOpen(false)} className="text-gray-400 hover:text-white text-2xl leading-none">×</button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              {historyLoading ? (
+                <div className="text-center py-8 text-gray-400">กำลังโหลดประวัติการจอง...</div>
+              ) : historyError ? (
+                <div className="bg-red-900 border border-red-700 text-red-200 p-3 rounded text-sm">{historyError}</div>
+              ) : bookingsHistory.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">คุณยังไม่มีประวัติการจองตั๋วภาพยนตร์</div>
+              ) : (
+                <div className="space-y-4">
+                  {bookingsHistory.map((bh) => {
+                    const { movieTitle, showtimeText } = getBookingDetails(bh.showtime_id);
+                    return (
+                      <div key={bh.id} className="bg-gray-700 rounded-lg p-4 border border-gray-600 flex flex-col sm:flex-row justify-between gap-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono px-2 py-0.5 bg-gray-600 text-yellow-400 rounded font-bold">
+                              CODE: {bh.booking_code}
+                            </span>
+                            <span className={`text-xs px-2 py-0.5 rounded uppercase font-semibold ${
+                              bh.status === "confirmed" || bh.status === "success" 
+                                ? "bg-green-900/60 text-green-300 border border-green-700" 
+                                : "bg-yellow-900/60 text-yellow-300 border border-yellow-700"
+                            }`}>
+                              {bh.status || "Confirmed"}
+                            </span>
+                          </div>
+                          <h4 className="text-lg font-bold text-white pt-1">{movieTitle}</h4>
+                          <p className="text-sm text-gray-300">📅 รอบฉาย: {showtimeText}</p>
+                          <p className="text-sm text-gray-300">
+                            💺 ที่นั่ง: <span className="text-blue-300 font-semibold">{bh.seats.map((s) => `${s.seat_row}${s.seat_col}`).join(", ")}</span>
+                          </p>
+                        </div>
+                        <div className="flex sm:flex-col justify-between sm:justify-center items-end border-t sm:border-t-0 pt-2 sm:pt-0 border-gray-600">
+                          <span className="text-xs text-gray-400 sm:mb-1">ราคารวม</span>
+                          <span className="text-xl font-bold text-green-400">฿{Number(bh.total_price).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-gray-700 bg-gray-750 flex justify-end rounded-b-xl">
+              <button onClick={() => setHistoryOpen(false)} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm font-semibold transition">
+                ปิดหน้าต่าง
+              </button>
             </div>
           </div>
         </div>
