@@ -4,16 +4,15 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
-# import models ทั้งหมดเพื่อให้ Alembic รู้จัก
 from app.config import get_settings
-from app.models import Base  # noqa: F401 - import models เพื่อ register metadata
-from app.models import Booking, BookingSeat, Cinema, Movie, Showtime, User  # noqa: F401
+from app.models import Base  
+from app.models import Booking, BookingSeat, Cinema, Movie, Showtime, User 
 
 config = context.config
 
-# inject database URL จาก settings
-settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+import os
+db_url = os.environ.get("DATABASE_URL") or get_settings().database_url
+config.set_main_option("sqlalchemy.url", db_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
