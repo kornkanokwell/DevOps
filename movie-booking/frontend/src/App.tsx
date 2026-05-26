@@ -24,8 +24,8 @@ type Showtime = {
   movie_id: number;
   start_time: string;
   price: number;
-  booked_seats?: { seat_row: string; seat_col: number }[]; // เพิ่มตรงนี้
   cinema?: { name: string };
+  booked_seats?: { seat_row: string; seat_col: number }[];
 };
 
 type BookingResult = {

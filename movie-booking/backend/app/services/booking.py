@@ -15,7 +15,6 @@ def create_booking(db: Session, user_id: int, data: BookingCreate) -> Booking:
     if not showtime:
         raise ValueError("ไม่พบรอบฉายนี้")
 
-    # เช็คที่นั่งซ้ำ
     for seat in data.seats:
         conflict = (
             db.query(BookingSeat)
@@ -31,7 +30,6 @@ def create_booking(db: Session, user_id: int, data: BookingCreate) -> Booking:
 
     total = showtime.price * len(data.seats)
 
-    # สร้าง booking code ไม่ซ้ำ
     while True:
         code = _gen_code()
         if not db.query(Booking).filter(Booking.booking_code == code).first():
@@ -45,21 +43,22 @@ def create_booking(db: Session, user_id: int, data: BookingCreate) -> Booking:
         status=BookingStatus.CONFIRMED,
     )
     db.add(booking)
-    db.flush()  # ได้ booking.id
+    db.flush() 
 
     for seat in data.seats:
-        db.add(
-            BookingSeat(
-                booking_id=booking.id,
-                showtime_id=data.showtime_id,
-                seat_row=seat.seat_row,
-                seat_col=seat.seat_col,
+        conflict = (
+            db.query(BookingSeat)
+            .join(Booking)
+            .filter(
+                BookingSeat.showtime_id == data.showtime_id,
+                BookingSeat.seat_row == seat.seat_row,
+                BookingSeat.seat_col == seat.seat_col,
+                Booking.status != BookingStatus.CANCELLED
             )
+            .first()
         )
-
-    db.commit()
-    db.refresh(booking)
-    return booking
+        if conflict:
+            raise ValueError(f"ที่นั่ง {seat.seat_row}{seat.seat_col} ถูกจองแล้ว")
 
 
 def get_user_bookings(db: Session, user_id: int) -> list[Booking]:

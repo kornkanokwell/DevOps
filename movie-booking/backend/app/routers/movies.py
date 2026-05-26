@@ -1,5 +1,3 @@
-"""Movie endpoints"""
-
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
@@ -8,6 +6,7 @@ from app.database import get_db
 from app.models import Movie, User, Showtime
 from app.schemas.movie import MovieCreate, MovieOut, MovieUpdate
 from app.services import movie as movie_service
+from app.models.booking import Booking, BookingSeat, BookingStatus
 
 router = APIRouter(prefix="/movies", tags=["Movies"])
 
@@ -19,44 +18,12 @@ def list_movies(
     limit: int = Query(50, ge=1, le=100),
     genre: str | None = None,
 ) -> list[Movie]:
-    """ดึงรายการหนังที่กำลังฉาย (public)"""
     return movie_service.list_movies(db, skip=skip, limit=limit, genre=genre)
 
 
 @router.get("/{movie_id}", response_model=MovieOut)
 def get_movie(movie_id: int, db: Session = Depends(get_db)) -> Movie:
     return movie_service.get_movie(db, movie_id)
-
-
-@router.post("", response_model=MovieOut, status_code=status.HTTP_201_CREATED)
-def create_movie(
-    data: MovieCreate,
-    db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),  # ⭐ require admin
-) -> Movie:
-    """เพิ่มหนังใหม่ — admin เท่านั้น"""
-    return movie_service.create_movie(db, data)
-
-
-@router.patch("/{movie_id}", response_model=MovieOut)
-def update_movie(
-    movie_id: int,
-    data: MovieUpdate,
-    db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
-) -> Movie:
-    """แก้ไขหนัง — admin เท่านั้น"""
-    return movie_service.update_movie(db, movie_id, data)
-
-
-@router.delete("/{movie_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_movie(
-    movie_id: int,
-    db: Session = Depends(get_db),
-    _admin: User = Depends(require_admin),
-) -> None:
-    """Soft delete (set is_active=False) — admin เท่านั้น"""
-    movie_service.soft_delete_movie(db, movie_id)
 
 @router.get("/{movie_id}/showtimes")
 def get_movie_showtimes(movie_id: int, db: Session = Depends(get_db)):
@@ -66,13 +33,31 @@ def get_movie_showtimes(movie_id: int, db: Session = Depends(get_db)):
         .order_by(Showtime.start_time)
         .all()
     )
-    return [
-        {
+    
+    result = []
+    for s in showtimes:
+        occupied_seats = (
+            db.query(BookingSeat)
+            .join(Booking)
+            .filter(
+                BookingSeat.showtime_id == s.id,
+                Booking.status != BookingStatus.CANCELLED
+            )
+            .all()
+        )
+        
+        booked_seats_list = [
+            {"seat_row": seat.seat_row, "seat_col": seat.seat_col}
+            for seat in occupied_seats
+        ]
+        
+        result.append({
             "id": s.id,
             "movie_id": s.movie_id,
             "cinema_id": s.cinema_id,
             "start_time": s.start_time.isoformat(),
             "price": float(s.price),
-        }
-        for s in showtimes
-    ]
+            "booked_seats": booked_seats_list,
+        })
+        
+    return result

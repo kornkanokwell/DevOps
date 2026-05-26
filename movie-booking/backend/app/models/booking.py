@@ -27,7 +27,7 @@ class Booking(Base, TimestampMixin):
         nullable=False,
     )
 
-    user: Mapped["User"] = relationship(back_populates="bookings")  # type: ignore[name-defined]
+    user: Mapped["User"] = relationship(back_populates="bookings")
     showtime: Mapped["Showtime"] = relationship(back_populates="bookings")
     seats: Mapped[list["BookingSeat"]] = relationship(
         back_populates="booking",
@@ -43,7 +43,6 @@ class BookingSeat(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"))
-    # denormalize showtime_id ลงมาเพื่อทำ unique constraint
     showtime_id: Mapped[int] = mapped_column(ForeignKey("showtimes.id", ondelete="CASCADE"))
     seat_row: Mapped[str] = mapped_column(String(2), nullable=False)  # A, B, C, ...
     seat_col: Mapped[int] = mapped_column(Integer, nullable=False)  # 1, 2, 3, ...
