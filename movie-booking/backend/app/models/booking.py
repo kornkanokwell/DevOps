@@ -36,11 +36,8 @@ class Booking(Base, TimestampMixin):
 
 
 class BookingSeat(Base):
-    """ที่นั่งในการจองแต่ละครั้ง — เก็บแค่ตำแหน่ง (row + col)"""
-
     __tablename__ = "booking_seats"
     __table_args__ = (
-        # ป้องกันการจองที่นั่งเดียวกันในรอบเดียวกันซ้ำ
         UniqueConstraint("showtime_id", "seat_row", "seat_col", name="uq_seat_per_showtime"),
     )
 

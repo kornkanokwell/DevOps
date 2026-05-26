@@ -1,5 +1,3 @@
-"""Authentication endpoints: /auth/register, /auth/login, /auth/me"""
-
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -27,11 +25,7 @@ def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ) -> TokenResponse:
-    """
-    Login - ใช้ form data (username=email, password=password)
-    OAuth2PasswordRequestForm จำเป็นต้องใช้ field ชื่อ 'username'
-    เพื่อให้ Swagger UI ใช้ปุ่ม Authorize ได้
-    """
+
     user = authenticate(
         db,
         LoginRequest(email=form_data.username, password=form_data.password),
@@ -42,5 +36,4 @@ def login(
 
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)) -> User:
-    """ดึงข้อมูล user ปัจจุบัน (ต้อง login)"""
     return current_user

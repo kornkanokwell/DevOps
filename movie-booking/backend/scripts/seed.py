@@ -16,7 +16,6 @@ def seed() -> None:
     try:
         print("🌱 Checking and seeding database...")
         
-        # ✦ 1. Check & Seed Users
         admin = db.query(User).filter(User.email == "admin@movie.com").first()
         if not admin:
             admin = User(

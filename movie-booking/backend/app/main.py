@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database import get_db
-from app.routers import auth, cinemas, movies
+from app.routers import auth, cinemas, movies, bookings
 
 settings = get_settings()
 
@@ -27,6 +27,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(movies.router)
 app.include_router(cinemas.router)
+app.include_router(bookings.router)
 
 
 @app.get("/", tags=["Health"])
