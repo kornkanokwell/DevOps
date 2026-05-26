@@ -217,7 +217,6 @@ function App() {
                 className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded font-semibold">
                 {loading ? "กำลังโหลด..." : isRegister ? "สมัคร" : "เข้าสู่ระบบ"}
               </button>
-              <p className="text-xs text-gray-400 text-center">ทดลอง: user@movie.com / user123 (หรือ admin@movie.com / admin123)</p>
             </div>
           </div>
         )}
