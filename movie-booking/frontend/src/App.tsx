@@ -19,6 +19,23 @@ type User = {
   role: string;
 };
 
+type Showtime = {
+  id: number;
+  movie_id: number;
+  start_time: string;
+  price: number;
+  cinema?: { name: string };
+};
+
+type BookingResult = {
+  booking_code: string;
+  total_price: number;
+  seats: { seat_row: string; seat_col: number }[];
+};
+
+const ROWS = ["A", "B", "C", "D", "E"];
+const COLS = [1, 2, 3, 4, 5, 6, 7, 8];
+
 function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem("token"));
   const [user, setUser] = useState<User | null>(null);
@@ -30,7 +47,15 @@ function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // โหลดหนัง
+  // Booking modal state
+  const [bookingMovie, setBookingMovie] = useState<Movie | null>(null);
+  const [showtimes, setShowtimes] = useState<Showtime[]>([]);
+  const [selectedShowtime, setSelectedShowtime] = useState<Showtime | null>(null);
+  const [selectedSeats, setSelectedSeats] = useState<{ row: string; col: number }[]>([]);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState("");
+  const [bookingSuccess, setBookingSuccess] = useState<BookingResult | null>(null);
+
   useEffect(() => {
     fetch(`${API}/movies`)
       .then((r) => r.json())
@@ -38,23 +63,15 @@ function App() {
       .catch(() => setError("ไม่สามารถโหลดหนังได้"));
   }, []);
 
-  // ดึง user ถ้ามี token
   useEffect(() => {
-    if (!token) {
-      setUser(null);
-      return;
-    }
+    if (!token) { setUser(null); return; }
     fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
-      .then((u) => {
-        if (u) setUser(u);
-        else handleLogout();
-      });
+      .then((u) => { if (u) setUser(u); else handleLogout(); });
   }, [token]);
 
   const handleLogin = async () => {
-    setError("");
-    setLoading(true);
+    setError(""); setLoading(true);
     try {
       const form = new FormData();
       form.append("username", email);
@@ -64,18 +81,14 @@ function App() {
       if (!res.ok) throw new Error(data.detail || "Login failed");
       setToken(data.access_token);
       localStorage.setItem("token", data.access_token);
-      setEmail("");
-      setPassword("");
+      setEmail(""); setPassword("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Login failed");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleRegister = async () => {
-    setError("");
-    setLoading(true);
+    setError(""); setLoading(true);
     try {
       const res = await fetch(`${API}/auth/register`, {
         method: "POST",
@@ -84,7 +97,6 @@ function App() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Register failed");
-      // auto login
       await handleLogin();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Register failed");
@@ -93,9 +105,68 @@ function App() {
   };
 
   const handleLogout = () => {
-    setToken(null);
-    setUser(null);
+    setToken(null); setUser(null);
     localStorage.removeItem("token");
+  };
+
+  const openBooking = async (movie: Movie) => {
+    setBookingMovie(movie);
+    setSelectedShowtime(null);
+    setSelectedSeats([]);
+    setBookingError("");
+    setBookingSuccess(null);
+    // โหลด showtimes ของหนังเรื่องนี้
+    try {
+      const res = await fetch(`${API}/movies/${movie.id}/showtimes`);
+      if (res.ok) {
+        const data = await res.json();
+        setShowtimes(data);
+        if (data.length > 0) setSelectedShowtime(data[0]);
+      } else {
+        setShowtimes([]);
+      }
+    } catch {
+      setShowtimes([]);
+    }
+  };
+
+  const toggleSeat = (row: string, col: number) => {
+    setSelectedSeats((prev) => {
+      const exists = prev.find((s) => s.row === row && s.col === col);
+      if (exists) return prev.filter((s) => !(s.row === row && s.col === col));
+      if (prev.length >= 8) return prev; // จำกัดสูงสุด 8 ที่นั่ง
+      return [...prev, { row, col }];
+    });
+  };
+
+  const handleBooking = async () => {
+    if (!selectedShowtime || selectedSeats.length === 0) return;
+    setBookingLoading(true); setBookingError("");
+    try {
+      const res = await fetch(`${API}/bookings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          showtime_id: selectedShowtime.id,
+          seats: selectedSeats.map((s) => ({ seat_row: s.row, seat_col: s.col })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "จองไม่สำเร็จ");
+      setBookingSuccess(data);
+    } catch (e) {
+      setBookingError(e instanceof Error ? e.message : "จองไม่สำเร็จ");
+    } finally { setBookingLoading(false); }
+  };
+
+  const closeModal = () => {
+    setBookingMovie(null);
+    setBookingSuccess(null);
+    setSelectedSeats([]);
+    setBookingError("");
   };
 
   return (
@@ -106,18 +177,12 @@ function App() {
           <h1 className="text-2xl font-bold">🎬 Movie Booking</h1>
           {user ? (
             <div className="flex items-center gap-3">
-              <span className="text-sm">
-                สวัสดี <strong>{user.full_name}</strong>
+              <span className="text-sm">สวัสดี <strong>{user.full_name}</strong>
                 {user.role === "admin" && (
-                  <span className="ml-2 px-2 py-0.5 bg-yellow-500 text-black text-xs rounded">
-                    ADMIN
-                  </span>
+                  <span className="ml-2 px-2 py-0.5 bg-yellow-500 text-black text-xs rounded">ADMIN</span>
                 )}
               </span>
-              <button
-                onClick={handleLogout}
-                className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm"
-              >
+              <button onClick={handleLogout} className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm">
                 ออกจากระบบ
               </button>
             </div>
@@ -132,66 +197,27 @@ function App() {
         {!user && (
           <div className="bg-gray-800 rounded-lg p-6 mb-8 max-w-md mx-auto">
             <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => setIsRegister(false)}
-                className={`flex-1 py-2 rounded ${
-                  !isRegister ? "bg-blue-600" : "bg-gray-700"
-                }`}
-              >
-                เข้าสู่ระบบ
-              </button>
-              <button
-                onClick={() => setIsRegister(true)}
-                className={`flex-1 py-2 rounded ${
-                  isRegister ? "bg-blue-600" : "bg-gray-700"
-                }`}
-              >
-                สมัครสมาชิก
-              </button>
+              <button onClick={() => setIsRegister(false)} className={`flex-1 py-2 rounded ${!isRegister ? "bg-blue-600" : "bg-gray-700"}`}>เข้าสู่ระบบ</button>
+              <button onClick={() => setIsRegister(true)} className={`flex-1 py-2 rounded ${isRegister ? "bg-blue-600" : "bg-gray-700"}`}>สมัครสมาชิก</button>
             </div>
-
             <div className="space-y-3">
               {isRegister && (
-                <input
-                  type="text"
-                  placeholder="ชื่อ-นามสกุล"
-                  value={fullName}
+                <input type="text" placeholder="ชื่อ-นามสกุล" value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-                />
+                  className="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none" />
               )}
-              <input
-                type="email"
-                placeholder="อีเมล"
-                value={email}
+              <input type="email" placeholder="อีเมล" value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-              />
-              <input
-                type="password"
-                placeholder="รหัสผ่าน"
-                value={password}
+                className="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none" />
+              <input type="password" placeholder="รหัสผ่าน" value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
-              />
-
-              {error && (
-                <div className="bg-red-900 border border-red-700 text-red-200 p-2 rounded text-sm">
-                  {error}
-                </div>
-              )}
-
-              <button
-                onClick={isRegister ? handleRegister : handleLogin}
-                disabled={loading}
-                className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded font-semibold"
-              >
+                className="w-full px-3 py-2 bg-gray-700 rounded border border-gray-600 focus:border-blue-500 focus:outline-none" />
+              {error && <div className="bg-red-900 border border-red-700 text-red-200 p-2 rounded text-sm">{error}</div>}
+              <button onClick={isRegister ? handleRegister : handleLogin} disabled={loading}
+                className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 rounded font-semibold">
                 {loading ? "กำลังโหลด..." : isRegister ? "สมัคร" : "เข้าสู่ระบบ"}
               </button>
-
-              <p className="text-xs text-gray-400 text-center">
-                ทดลอง: user@movie.com / user123 (หรือ admin@movie.com / admin123)
-              </p>
+              <p className="text-xs text-gray-400 text-center">ทดลอง: user@movie.com / user123 (หรือ admin@movie.com / admin123)</p>
             </div>
           </div>
         )}
@@ -203,32 +229,19 @@ function App() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {movies.map((m) => (
-              <div
-                key={m.id}
-                className="bg-gray-800 rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-500 transition"
-              >
-                {m.poster_url && (
-                  <img
-                    src={m.poster_url}
-                    alt={m.title}
-                    className="w-full h-80 object-cover"
-                  />
-                )}
+              <div key={m.id} className="bg-gray-800 rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-500 transition">
+                {m.poster_url && <img src={m.poster_url} alt={m.title} className="w-full h-80 object-cover" />}
                 <div className="p-4">
                   <h3 className="text-lg font-bold mb-1">{m.title}</h3>
                   <div className="flex gap-2 text-xs text-gray-400 mb-2">
-                    <span>{m.genre}</span>
-                    <span>•</span>
-                    <span>{m.duration_minutes} นาที</span>
-                    <span>•</span>
+                    <span>{m.genre}</span><span>•</span>
+                    <span>{m.duration_minutes} นาที</span><span>•</span>
                     <span className="px-1 bg-gray-700 rounded">{m.rating}</span>
                   </div>
                   <p className="text-sm text-gray-300 line-clamp-3">{m.description}</p>
                   {user && (
-                    <button
-                      className="mt-3 w-full py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-semibold"
-                      onClick={() => alert(`🚧 ฟีเจอร์จองตั๋วกำลังพัฒนา (${m.title})`)}
-                    >
+                    <button onClick={() => openBooking(m)}
+                      className="mt-3 w-full py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-semibold">
                       จองตั๋ว
                     </button>
                   )}
@@ -238,10 +251,145 @@ function App() {
           </div>
         )}
 
-        <footer className="mt-12 text-center text-gray-500 text-sm">
-          Movie Booking System • DevOps Project
-        </footer>
+        <footer className="mt-12 text-center text-gray-500 text-sm">Movie Booking System • DevOps Project</footer>
       </main>
+
+      {/* Booking Modal */}
+      {bookingMovie && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex items-start justify-between mb-4">
+                <h2 className="text-xl font-bold">🎟️ จองตั๋ว: {bookingMovie.title}</h2>
+                <button onClick={closeModal} className="text-gray-400 hover:text-white text-2xl leading-none ml-4">×</button>
+              </div>
+
+              {bookingSuccess ? (
+                /* Success State */
+                <div className="text-center py-4">
+                  <div className="text-5xl mb-4">✅</div>
+                  <h3 className="text-xl font-bold text-green-400 mb-2">จองสำเร็จ!</h3>
+                  <div className="bg-gray-700 rounded-lg p-4 mb-4 text-left">
+                    <p className="text-sm text-gray-400 mb-1">รหัสการจอง</p>
+                    <p className="text-2xl font-mono font-bold text-yellow-400">{bookingSuccess.booking_code}</p>
+                    <p className="text-sm text-gray-400 mt-3 mb-1">ที่นั่ง</p>
+                    <p className="font-semibold">
+                      {bookingSuccess.seats.map((s) => `${s.seat_row}${s.seat_col}`).join(", ")}
+                    </p>
+                    <p className="text-sm text-gray-400 mt-3 mb-1">ราคารวม</p>
+                    <p className="font-semibold text-green-400">฿{Number(bookingSuccess.total_price).toFixed(2)}</p>
+                  </div>
+                  <button onClick={closeModal} className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold">ปิด</button>
+                </div>
+              ) : (
+                <>
+                  {/* Showtime Selector */}
+                  {showtimes.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-400 text-lg">😔 ยังไม่มีรอบฉายสำหรับหนังเรื่องนี้</p>
+                      <button onClick={closeModal} className="mt-4 px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded">ปิด</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mb-4">
+                        <label className="block text-sm text-gray-400 mb-2">เลือกรอบฉาย</label>
+                        <div className="space-y-2">
+                          {showtimes.map((st) => (
+                            <button key={st.id}
+                              onClick={() => { setSelectedShowtime(st); setSelectedSeats([]); }}
+                              className={`w-full text-left px-3 py-2 rounded border transition ${
+                                selectedShowtime?.id === st.id
+                                  ? "border-blue-500 bg-blue-900/30"
+                                  : "border-gray-600 bg-gray-700 hover:border-gray-500"
+                              }`}>
+                              <span className="font-semibold">
+                                {new Date(st.start_time).toLocaleString("th-TH", {
+                                  dateStyle: "short", timeStyle: "short"
+                                })}
+                              </span>
+                              <span className="text-green-400 ml-3">฿{Number(st.price).toFixed(0)} / ที่นั่ง</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Seat Map */}
+                      {selectedShowtime && (
+                        <div className="mb-4">
+                          <label className="block text-sm text-gray-400 mb-2">
+                            เลือกที่นั่ง ({selectedSeats.length} ที่นั่ง)
+                          </label>
+                          {/* Screen */}
+                          <div className="w-full bg-blue-900/40 border border-blue-700 rounded text-center text-xs text-blue-300 py-1 mb-3">
+                            🎬 จอภาพ
+                          </div>
+                          <div className="space-y-1">
+                            {ROWS.map((row) => (
+                              <div key={row} className="flex gap-1 items-center">
+                                <span className="text-xs text-gray-500 w-4">{row}</span>
+                                {COLS.map((col) => {
+                                  const isSelected = selectedSeats.some((s) => s.row === row && s.col === col);
+                                  return (
+                                    <button key={col}
+                                      onClick={() => toggleSeat(row, col)}
+                                      className={`flex-1 py-2 rounded text-xs font-semibold transition ${
+                                        isSelected
+                                          ? "bg-blue-600 text-white"
+                                          : "bg-gray-700 hover:bg-gray-600 text-gray-300"
+                                      }`}>
+                                      {col}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </div>
+                          <div className="flex gap-3 mt-2 text-xs text-gray-400">
+                            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-gray-700 rounded inline-block"></span>ว่าง</span>
+                            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-600 rounded inline-block"></span>เลือกแล้ว</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Summary */}
+                      {selectedSeats.length > 0 && selectedShowtime && (
+                        <div className="bg-gray-700 rounded-lg p-3 mb-4 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-400">ที่นั่ง:</span>
+                            <span>{selectedSeats.map((s) => `${s.row}${s.col}`).join(", ")}</span>
+                          </div>
+                          <div className="flex justify-between mt-1">
+                            <span className="text-gray-400">ราคารวม:</span>
+                            <span className="text-green-400 font-bold">
+                              ฿{(Number(selectedShowtime.price) * selectedSeats.length).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {bookingError && (
+                        <div className="bg-red-900 border border-red-700 text-red-200 p-2 rounded text-sm mb-3">
+                          {bookingError}
+                        </div>
+                      )}
+
+                      <div className="flex gap-2">
+                        <button onClick={closeModal} className="flex-1 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm">ยกเลิก</button>
+                        <button
+                          onClick={handleBooking}
+                          disabled={bookingLoading || selectedSeats.length === 0 || !selectedShowtime}
+                          className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed rounded text-sm font-semibold">
+                          {bookingLoading ? "กำลังจอง..." : `ยืนยันการจอง (${selectedSeats.length} ที่นั่ง)`}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
