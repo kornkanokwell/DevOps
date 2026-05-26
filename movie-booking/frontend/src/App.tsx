@@ -330,7 +330,7 @@ function App() {
         <footer className="mt-12 text-center text-gray-500 text-sm">Movie Booking System • DevOps Project</footer>
       </main>
 
-      {/* Booking Modal */}
+ {/* Booking Modal */}
       {bookingMovie && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
           <div className="bg-gray-800 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -399,26 +399,41 @@ function App() {
                             {ROWS.map((row) => (
                               <div key={row} className="flex gap-1 items-center">
                                 <span className="text-xs text-gray-500 w-4">{row}</span>
+                                
+                                {/* 🟢 [จุดที่ 3] แก้ไขลูปสร้างปุ่มที่นั่ง เพื่อตรวจเช็คสถานะถูกจองแล้ว */}
                                 {COLS.map((col) => {
                                   const isSelected = selectedSeats.some((s) => s.row === row && s.col === col);
+                                  
+                                  // เช็คว่าที่นั่งนี้มีอยู่ในลิสต์ที่จองแล้วของรอบนี้ (จาก Backend) หรือไม่
+                                  const isOccupied = selectedShowtime?.booked_seats?.some(
+                                    (s) => s.seat_row === row && s.seat_col === col
+                                  );
+
                                   return (
                                     <button key={col}
+                                      disabled={isOccupied} // ปิดการใช้งานปุ่มถ้าจองแล้ว
                                       onClick={() => toggleSeat(row, col)}
                                       className={`flex-1 py-2 rounded text-xs font-semibold transition ${
-                                        isSelected
+                                        isOccupied
+                                          ? "bg-gray-950 text-gray-600 cursor-not-allowed border border-gray-800" // สีทึบเมื่อถูกจองแล้ว
+                                          : isSelected
                                           ? "bg-blue-600 text-white"
                                           : "bg-gray-700 hover:bg-gray-600 text-gray-300"
                                       }`}>
-                                      {col}
+                                      {isOccupied ? "✕" : col} {/* แสดงกากบาทถ้าจองแล้ว */}
                                     </button>
                                   );
                                 })}
+
                               </div>
                             ))}
                           </div>
+
+                          {/* 🟢 [จุดที่ 4] เพิ่มป้ายสัญลักษณ์ "จองแล้ว" สีเทาเข้มกากบาท */}
                           <div className="flex gap-3 mt-2 text-xs text-gray-400">
                             <span className="flex items-center gap-1"><span className="w-3 h-3 bg-gray-700 rounded inline-block"></span>ว่าง</span>
                             <span className="flex items-center gap-1"><span className="w-3 h-3 bg-blue-600 rounded inline-block"></span>เลือกแล้ว</span>
+                            <span className="flex items-center gap-1"><span className="w-3 h-3 bg-gray-950 border border-gray-800 rounded inline-block"></span>จองแล้ว</span>
                           </div>
                         </div>
                       )}
