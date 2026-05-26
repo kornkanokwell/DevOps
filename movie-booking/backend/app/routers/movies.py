@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import require_admin
 from app.database import get_db
-from app.models import Movie, User
+from app.models import Movie, User, Showtime
 from app.schemas.movie import MovieCreate, MovieOut, MovieUpdate
 from app.services import movie as movie_service
 
@@ -57,3 +57,22 @@ def delete_movie(
 ) -> None:
     """Soft delete (set is_active=False) — admin เท่านั้น"""
     movie_service.soft_delete_movie(db, movie_id)
+
+@router.get("/{movie_id}/showtimes")
+def get_movie_showtimes(movie_id: int, db: Session = Depends(get_db)):
+    showtimes = (
+        db.query(Showtime)
+        .filter(Showtime.movie_id == movie_id)
+        .order_by(Showtime.start_time)
+        .all()
+    )
+    return [
+        {
+            "id": s.id,
+            "movie_id": s.movie_id,
+            "cinema_id": s.cinema_id,
+            "start_time": s.start_time.isoformat(),
+            "price": float(s.price),
+        }
+        for s in showtimes
+    ]
