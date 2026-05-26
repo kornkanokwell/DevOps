@@ -24,6 +24,7 @@ type Showtime = {
   movie_id: number;
   start_time: string;
   price: number;
+  booked_seats?: { seat_row: string; seat_col: number }[]; // เพิ่มตรงนี้
   cinema?: { name: string };
 };
 
@@ -65,12 +66,10 @@ function App() {
   const [bookingError, setBookingError] = useState("");
   const [bookingSuccess, setBookingSuccess] = useState<BookingResult | null>(null);
 
-  // --- เพิ่ม State สำหรับระบบประวัติการจอง ---
   const [historyOpen, setHistoryOpen] = useState(false);
   const [bookingsHistory, setBookingsHistory] = useState<HistoryBooking[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
-  // เก็บ cache รอบฉายทั้งหมดเพื่อเอาไว้ดึงรอบฉายของประวัติการจอง
   const [allShowtimes, setAllShowtimes] = useState<Showtime[]>([]);
 
   useEffect(() => {
@@ -78,13 +77,11 @@ function App() {
       .then((r) => r.json())
       .then((data) => {
         setMovies(data);
-        // วนลูปดึงรอบฉายของทุกเรื่องมาเก็บไว้เพื่อใช้ Map ข้อมูลในหน้าประวัติ
         data.forEach((movie: Movie) => {
           fetch(`${API}/movies/${movie.id}/showtimes`)
             .then((r) => r.json())
             .then((stList) => {
               setAllShowtimes((prev) => {
-                // กรองไม่ให้รอบฉายซ้ำกัน
                 const filtered = stList.filter((st: Showtime) => !prev.some((p) => p.id === st.id));
                 return [...prev, ...filtered];
               });
@@ -155,7 +152,6 @@ function App() {
         setShowtimes(data);
         if (data.length > 0) setSelectedShowtime(data[0]);
         
-        // อัปเดตผัง allShowtimes ไปด้วยในตัว
         setAllShowtimes((prev) => {
           const filtered = data.filter((st: Showtime) => !prev.some((p) => p.id === st.id));
           return [...prev, ...filtered];
@@ -169,13 +165,18 @@ function App() {
   };
 
   const toggleSeat = (row: string, col: number) => {
-    setSelectedSeats((prev) => {
-      const exists = prev.find((s) => s.row === row && s.col === col);
-      if (exists) return prev.filter((s) => !(s.row === row && s.col === col));
-      if (prev.length >= 8) return prev;
-      return [...prev, { row, col }];
-    });
-  };
+  const isOccupied = selectedShowtime?.booked_seats?.some(
+    (s) => s.seat_row === row && s.seat_col === col
+  );
+  if (isOccupied) return;
+
+  setSelectedSeats((prev) => {
+    const exists = prev.find((s) => s.row === row && s.col === col);
+    if (exists) return prev.filter((s) => !(s.row === row && s.col === col));
+    if (prev.length >= 8) return prev;
+    return [...prev, { row, col }];
+  });
+};
 
   const handleBooking = async () => {
     if (!selectedShowtime || selectedSeats.length === 0) return;
@@ -226,7 +227,6 @@ function App() {
     }
   };
 
-  // --- ฟังก์ชันสำหรับ Map หาชื่อหนังและรอบจาก showtime_id ---
   const getBookingDetails = (showtimeId: number) => {
     const showtime = allShowtimes.find((st) => st.id === showtimeId);
     if (!showtime) return { movieTitle: "ไม่พบข้อมูลหนัง", showtimeText: "ไม่พบข้อมูลรอบฉาย" };
